@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Environment variables
+.env
+server/.env
+client/.env
+
+# Build outputs
+dist/
+client/dist/
+build/
+client/build/
+.vercel
+
+# Logs and Dumps
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+server/*.txt
+server/db_dump.txt
+server/praneeth_log.txt
+server/output.txt
+
+# Development / Debug Scripts (Ignore all scratchpad scripts)
+server/check_*.js
+server/debug_*.js
+server/diagnostic*.js
+server/test_*.js
+server/seed*.js
+server/clean*.js
+server/repair_*.js
+server/reset*.js
+server/list_*.js
+server/fix-*.js
+server/master-reset.js
+server/addFreshSapling.js
+server/cleanup.js
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Uploads
+server/uploads/*
+!server/uploads/.gitkeep
+
+# IDE files
+.vscode/
+.idea/
