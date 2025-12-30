@@ -27,7 +27,9 @@ const AdminLogin = () => {
             login(data, true);
             navigate('/admin/dashboard');
         } catch (err) {
-            setError(err.response?.data?.message || 'Login failed.');
+            console.error('Login Error:', err);
+            const msg = err.response?.data?.message || err.response?.data || err.message || 'Login failed.';
+            setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
         } finally {
             setLoading(false);
         }

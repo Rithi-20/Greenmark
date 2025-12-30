@@ -43,19 +43,18 @@ app.use(async (req, res, next) => {
 
 // Request logging middleware
 app.use((req, res, next) => {
-    console.log(`📨 ${req.method} ${req.url}`);
-    console.log('Body:', req.body);
+    console.log(`📨 [${new Date().toISOString()}] ${req.method} ${req.url}`);
     next();
 });
 
 app.get('/api/test', (req, res) => res.json({ message: 'Main API is reachable' }));
-app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminRoutes);
-console.log('🔗 Wiring up /api/user routes...');
-app.use('/api/user', userRoutes);
-app.use('/api/delivery', deliveryRoutes);
-console.log('🔗 Wiring up /api/sapling-orders routes...');
-app.use('/api/sapling-orders', saplingOrderRoutes);
+app.get('/test', (req, res) => res.json({ message: 'Main API is reachable (no prefix)' }));
+
+app.use(['/api/auth', '/auth'], authRoutes);
+app.use(['/api/admin', '/admin'], adminRoutes);
+app.use(['/api/user', '/user'], userRoutes);
+app.use(['/api/delivery', '/delivery'], deliveryRoutes);
+app.use(['/api/sapling-orders', '/sapling-orders'], saplingOrderRoutes);
 
 
 
