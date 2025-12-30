@@ -108,7 +108,7 @@ const VerifyImages = () => {
                             <div key={up._id} className="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-200 flex flex-col">
                                 <div className="h-36 relative group overflow-hidden">
                                     <img
-                                        src={up.image_ipfs_hash?.startsWith('http') ? up.image_ipfs_hash : `${BASE_URL}${up.local_path || up.image_ipfs_hash}`}
+                                        src={up.ipfs_gateway_url || (up.image_ipfs_hash?.startsWith('http') ? up.image_ipfs_hash : `${BASE_URL}${up.local_path || up.image_ipfs_hash}`)}
 
                                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                                         alt="Sapling Update"
