@@ -27,10 +27,15 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 
 // DB Connection Check Middleware
-app.use((req, res, next) => {
-    if (mongoose.connection.readyState !== 1 && req.path.startsWith('/api')) {
+app.use(async (req, res, next) => {
+    // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
+    const state = mongoose.connection.readyState;
+
+    if (state !== 1 && state !== 2 && req.path.startsWith('/api')) {
+        console.error(`❌ DB Connection State: ${state}. Returning 503.`);
         return res.status(503).json({
-            message: 'Database connection is not established. Please check server logs and Atlas IP whitelist.'
+            message: 'Database connection is not established. Please check server logs and Atlas IP whitelist.',
+            currentState: state
         });
     }
     next();
