@@ -15,12 +15,16 @@
     ],
     "routes": [
         {
+            "src": "/api/ping",
+            "dest": "server/server.js"
+        },
+        {
             "src": "/api/(.*)",
-            "dest": "/server/server.js"
+            "dest": "server/server.js"
         },
         {
             "src": "/uploads/(.*)",
-            "dest": "/server/server.js"
+            "dest": "server/server.js"
         },
         {
             "src": "/assets/(.*)",

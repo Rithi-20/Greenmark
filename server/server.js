@@ -47,16 +47,23 @@ app.use((req, res, next) => {
     next();
 });
 
+app.get('/api/ping', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 app.get('/api/test', (req, res) => res.json({ message: 'Main API is reachable' }));
 app.get('/test', (req, res) => res.json({ message: 'Main API is reachable (no prefix)' }));
 
-app.use(['/api/auth', '/auth'], authRoutes);
-app.use(['/api/admin', '/admin'], adminRoutes);
-app.use(['/api/user', '/user'], userRoutes);
-app.use(['/api/delivery', '/delivery'], deliveryRoutes);
-app.use(['/api/sapling-orders', '/sapling-orders'], saplingOrderRoutes);
+// Standard /api routes
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/delivery', deliveryRoutes);
+app.use('/api/sapling-orders', saplingOrderRoutes);
 
-
+// Aliased routes (for when Vercel strips /api)
+app.use('/auth', authRoutes);
+app.use('/admin', adminRoutes);
+app.use('/user', userRoutes);
+app.use('/delivery', deliveryRoutes);
+app.use('/sapling-orders', saplingOrderRoutes);
 
 // Routes Placeholder
 app.get('/', (req, res) => {
@@ -66,7 +73,11 @@ app.get('/', (req, res) => {
 // Catch-all for 404
 app.use((req, res) => {
     console.log(`🚫 GreenMark 404 Not Found: ${req.method} ${req.url}`);
-    res.status(404).json({ message: `Route ${req.method} ${req.url} not found on this server` });
+    res.status(404).json({
+        message: `Route ${req.method} ${req.url} not found on this server`,
+        path: req.url,
+        method: req.method
+    });
 });
 
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/greenmark';
