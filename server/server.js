@@ -5,6 +5,13 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+// Import routes FIRST (static imports)
+import authRoutes from './routes/auth.js';
+import adminRoutes from './routes/admin.js';
+import userRoutes from './routes/user.js';
+import deliveryRoutes from './routes/delivery.js';
+import saplingOrderRoutes from './routes/saplingOrder.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -15,7 +22,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 
-// CORS - Must be first
+// CORS
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -26,46 +33,42 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-console.log('✅ Server initializing...');
-
-// Health check (always available)
+// Health check
 app.get('/api/ping', (req, res) => {
-    res.json({ status: 'ok', time: new Date().toISOString() });
+    res.json({ status: 'ok', time: new Date().toISOString(), routes: 'loaded' });
 });
 
 app.get('/', (req, res) => {
     res.send('GreenMark API is running');
 });
 
-// Load routes immediately with dynamic imports
-(async () => {
-    try {
-        const authModule = await import('./routes/auth.js');
-        const adminModule = await import('./routes/admin.js');
-        const userModule = await import('./routes/user.js');
-        const deliveryModule = await import('./routes/delivery.js');
-        const saplingModule = await import('./routes/saplingOrder.js');
+// Register routes
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/delivery', deliveryRoutes);
+app.use('/api/sapling-orders', saplingOrderRoutes);
 
-        app.use('/api/auth', authModule.default);
-        app.use('/api/admin', adminModule.default);
-        app.use('/api/user', userModule.default);
-        app.use('/api/delivery', deliveryModule.default);
-        app.use('/api/sapling-orders', saplingModule.default);
+console.log('✅ Routes registered');
 
-        console.log('✅ Routes loaded successfully');
-    } catch (error) {
-        console.error('❌ Route loading error:', error);
-    }
-})();
+// 404 handler
+app.use((req, res) => {
+    console.log('❌ 404:', req.method, req.url);
+    res.status(404).json({
+        error: 'Route not found',
+        method: req.method,
+        path: req.url
+    });
+});
 
-// DB Connection (runs in parallel, doesn't block routes)
+// DB Connection
 const MONGO_URI = process.env.MONGODB_URI;
 if (MONGO_URI) {
     mongoose.connect(MONGO_URI)
         .then(() => console.log('✅ MongoDB Connected'))
         .catch(err => console.error('❌ MongoDB Error:', err.message));
 } else {
-    console.error('❌ MONGODB_URI not found in environment!');
+    console.error('❌ MONGODB_URI not set!');
 }
 
 export default app;
