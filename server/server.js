@@ -24,17 +24,30 @@ import deliveryRoutes from './routes/delivery.js';
 import saplingOrderRoutes from './routes/saplingOrder.js';
 
 
-app.use(cors({
-    origin: '*', // For development/hackathons, allowing all is easiest. You can restrict this later to your frontend URL.
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
+// Manual CORS implementation to be 100% sure headers are sent even on errors or preflights
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    // Allow all origins for now to solve the issue, can restrict later
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Credentials', 'true');
 
-// Explicitly handle OPTIONS preflight requests
-app.options('*', cors());
+    // Handle Preflight
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    next();
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Log important config status (DO NOT LOG SECRETS)
+console.log('✅ Server Starting...');
+console.log('✅ DB Config Present:', !!process.env.MONGODB_URI);
+console.log('✅ JWT Config Present:', !!process.env.JWT_SECRET);
+
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 
