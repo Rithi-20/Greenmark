@@ -19,34 +19,59 @@ app.use(express.urlencoded({ extended: true }));
 
 // Health check
 app.get('/api/ping', (req, res) => {
-    res.json({ status: 'ok', time: new Date().toISOString() });
+    res.json({ status: 'ok', time: new Date().toISOString(), routes: 'checking...' });
 });
 
 app.get('/', (req, res) => {
     res.send('GreenMark API is running');
 });
 
-// Import routes synchronously
-let authRoutes, adminRoutes, userRoutes, deliveryRoutes, saplingOrderRoutes;
+// Test route to verify routing works
+app.post('/api/auth/user/login', async (req, res) => {
+    try {
+        console.log('Login attempt:', req.body);
 
-try {
-    authRoutes = (await import('./routes/auth.js')).default;
-    adminRoutes = (await import('./routes/admin.js')).default;
-    userRoutes = (await import('./routes/user.js')).default;
-    deliveryRoutes = (await import('./routes/delivery.js')).default;
-    saplingOrderRoutes = (await import('./routes/saplingOrder.js')).default;
+        // Import controller dynamically only when needed
+        const { loginUser } = await import('./controllers/authController.js');
+        return loginUser(req, res);
+    } catch (error) {
+        console.error('Login handler error:', error);
+        res.status(500).json({
+            message: 'Login handler error',
+            error: error.message
+        });
+    }
+});
 
-    // Register routes
-    app.use('/api/auth', authRoutes);
-    app.use('/api/admin', adminRoutes);
-    app.use('/api/user', userRoutes);
-    app.use('/api/delivery', deliveryRoutes);
-    app.use('/api/sapling-orders', saplingOrderRoutes);
+// Test route for admin login
+app.post('/api/auth/admin/login', async (req, res) => {
+    try {
+        const { adminLogin } = await import('./controllers/authController.js');
+        return adminLogin(req, res);
+    } catch (error) {
+        console.error('Admin login error:', error);
+        res.status(500).json({
+            message: 'Admin login handler error',
+            error: error.message
+        });
+    }
+});
 
-    console.log('✅ Routes loaded');
-} catch (error) {
-    console.error('❌ Failed to load routes:', error.message);
-}
+// Test route for user registration
+app.post('/api/auth/user/register', async (req, res) => {
+    try {
+        const { registerUser } = await import('./controllers/authController.js');
+        return registerUser(req, res);
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.status(500).json({
+            message: 'Registration handler error',
+            error: error.message
+        });
+    }
+});
+
+console.log('✅ Core routes registered inline');
 
 // DB
 const MONGO_URI = process.env.MONGODB_URI;
