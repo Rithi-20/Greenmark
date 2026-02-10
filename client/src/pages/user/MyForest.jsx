@@ -20,11 +20,18 @@ const MyForest = () => {
     }, [user]);
 
     const fetchSaplings = async () => {
+        if (!user || (!user.user_id && !user._id)) {
+            console.warn('MyForest: No user ID found for fetching saplings.');
+            setLoading(false);
+            return;
+        }
+
         try {
-            const { data } = await axios.get(`${API_URL}/user/${user.user_id}/saplings`);
-            setSaplings(data);
+            const userId = user.user_id || user._id;
+            const { data } = await axios.get(`${API_URL}/user/${userId}/saplings`);
+            setSaplings(Array.isArray(data) ? data : []);
         } catch (error) {
-            console.error(error);
+            console.error('Fetch Saplings Error:', error);
         } finally {
             setLoading(false);
         }
@@ -111,7 +118,7 @@ const MyForest = () => {
                                                 <QRCode
                                                     size={256}
                                                     style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-                                                    value={`http://${ipAddress || 'localhost'}:5173/user/upload/${sap.sapling_id}`}
+                                                    value={`${window.location.protocol}//${ipAddress}${window.location.port ? ':' + window.location.port : ''}/user/upload/${sap.sapling_id}`}
                                                     viewBox={`0 0 256 256`}
                                                 />
                                             </div>
