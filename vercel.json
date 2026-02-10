@@ -4,37 +4,17 @@
         {
             "src": "server/server.js",
             "use": "@vercel/node"
-        },
-        {
-            "src": "client/package.json",
-            "use": "@vercel/static-build",
-            "config": {
-                "distDir": "dist"
-            }
         }
     ],
     "routes": [
         {
-            "src": "/api/(.*)",
-            "dest": "/server/server.js",
+            "src": "/(.*)",
+            "dest": "server/server.js",
             "headers": {
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Methods": "GET,OPTIONS,PATCH,DELETE,POST,PUT",
-                "Access-Control-Allow-Headers": "*"
+                "Access-Control-Allow-Headers": "Content-Type, Authorization"
             }
-        },
-        {
-            "src": "/uploads/(.*)",
-            "dest": "/server/server.js"
-        },
-        {
-            "src": "/(.*)",
-            "dest": "/client/$1",
-            "continue": true
-        },
-        {
-            "src": "/(.*)",
-            "dest": "/client/index.html"
         }
     ]
 }
