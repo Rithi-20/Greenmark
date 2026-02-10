@@ -23,17 +23,11 @@ import userRoutes from './routes/user.js';
 import deliveryRoutes from './routes/delivery.js';
 import saplingOrderRoutes from './routes/saplingOrder.js';
 
-
-// Manual CORS implementation to be 100% sure headers are sent even on errors or preflights
+// 1. ABSOLUTE TOP: CORS Headers (Must be before ANY other middleware)
 app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    // Allow all origins for now to solve the issue, can restrict later
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    res.header('Access-Control-Allow-Credentials', 'true');
-
-    // Handle Preflight
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
