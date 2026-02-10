@@ -1,12 +1,11 @@
 const LOCAL_URL = `http://${window.location.hostname}:5000`;
 
-// Use environment variable from Vercel if available, otherwise fallback to the known backend
-const ENV_API_URL = import.meta.env.VITE_API_URL;
-const KNOWN_BACKEND = 'https://greenmark-iota.vercel.app';
+// HARDCODED BACKEND URL TO BYPASS ALL DYNAMIC ISSUES
+const BACKEND_URL = "https://greenmark-iota.vercel.app";
 
 const PROD_URL = window.location.hostname === 'localhost'
     ? LOCAL_URL
-    : (ENV_API_URL || KNOWN_BACKEND);
+    : BACKEND_URL;
 
 export const BASE_URL = window.location.hostname === 'localhost' || window.location.hostname.includes('192.168')
     ? LOCAL_URL
@@ -14,8 +13,4 @@ export const BASE_URL = window.location.hostname === 'localhost' || window.locat
 
 export const API_URL = `${BASE_URL}/api`;
 
-console.log('🌐 Greenmark API Configuration:', {
-    API_URL,
-    hostname: window.location.hostname,
-    isLocal: window.location.hostname === 'localhost'
-});
+console.log('🌐 API LOADED:', API_URL);
