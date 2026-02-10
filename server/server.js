@@ -5,20 +5,10 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Import routes FIRST (static imports)
-import authRoutes from './routes/auth.js';
-import adminRoutes from './routes/admin.js';
-import userRoutes from './routes/user.js';
-import deliveryRoutes from './routes/delivery.js';
-import saplingOrderRoutes from './routes/saplingOrder.js';
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment variables
 dotenv.config();
-dotenv.config({ path: path.join(process.cwd(), '.env') });
-dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 
@@ -31,44 +21,46 @@ app.use(cors({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Health check
 app.get('/api/ping', (req, res) => {
-    res.json({ status: 'ok', time: new Date().toISOString(), routes: 'loaded' });
+    res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
 app.get('/', (req, res) => {
     res.send('GreenMark API is running');
 });
 
-// Register routes
-app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/user', userRoutes);
-app.use('/api/delivery', deliveryRoutes);
-app.use('/api/sapling-orders', saplingOrderRoutes);
+// Import and register routes inline to avoid top-level import issues
+const registerRoutes = async () => {
+    try {
+        const { default: authRoutes } = await import('./routes/auth.js');
+        const { default: adminRoutes } = await import('./routes/admin.js');
+        const { default: userRoutes } = await import('./routes/user.js');
+        const { default: deliveryRoutes } = await import('./routes/delivery.js');
+        const { default: saplingOrderRoutes } = await import('./routes/saplingOrder.js');
 
-console.log('✅ Routes registered');
+        app.use('/api/auth', authRoutes);
+        app.use('/api/admin', adminRoutes);
+        app.use('/api/user', userRoutes);
+        app.use('/api/delivery', deliveryRoutes);
+        app.use('/api/sapling-orders', saplingOrderRoutes);
 
-// 404 handler
-app.use((req, res) => {
-    console.log('❌ 404:', req.method, req.url);
-    res.status(404).json({
-        error: 'Route not found',
-        method: req.method,
-        path: req.url
-    });
-});
+        console.log('✅ All routes registered');
+    } catch (err) {
+        console.error('❌ Route registration failed:', err.message);
+    }
+};
 
-// DB Connection
+// Call immediately
+registerRoutes();
+
+// DB
 const MONGO_URI = process.env.MONGODB_URI;
 if (MONGO_URI) {
     mongoose.connect(MONGO_URI)
         .then(() => console.log('✅ MongoDB Connected'))
-        .catch(err => console.error('❌ MongoDB Error:', err.message));
-} else {
-    console.error('❌ MONGODB_URI not set!');
+        .catch(err => console.error('❌ DB Error:', err.message));
 }
 
 export default app;
