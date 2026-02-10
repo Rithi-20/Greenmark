@@ -2,11 +2,6 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -31,29 +26,27 @@ app.get('/', (req, res) => {
     res.send('GreenMark API is running');
 });
 
-// Import and register routes inline to avoid top-level import issues
-const registerRoutes = async () => {
-    try {
-        const { default: authRoutes } = await import('./routes/auth.js');
-        const { default: adminRoutes } = await import('./routes/admin.js');
-        const { default: userRoutes } = await import('./routes/user.js');
-        const { default: deliveryRoutes } = await import('./routes/delivery.js');
-        const { default: saplingOrderRoutes } = await import('./routes/saplingOrder.js');
+// Import routes synchronously
+let authRoutes, adminRoutes, userRoutes, deliveryRoutes, saplingOrderRoutes;
 
-        app.use('/api/auth', authRoutes);
-        app.use('/api/admin', adminRoutes);
-        app.use('/api/user', userRoutes);
-        app.use('/api/delivery', deliveryRoutes);
-        app.use('/api/sapling-orders', saplingOrderRoutes);
+try {
+    authRoutes = (await import('./routes/auth.js')).default;
+    adminRoutes = (await import('./routes/admin.js')).default;
+    userRoutes = (await import('./routes/user.js')).default;
+    deliveryRoutes = (await import('./routes/delivery.js')).default;
+    saplingOrderRoutes = (await import('./routes/saplingOrder.js')).default;
 
-        console.log('✅ All routes registered');
-    } catch (err) {
-        console.error('❌ Route registration failed:', err.message);
-    }
-};
+    // Register routes
+    app.use('/api/auth', authRoutes);
+    app.use('/api/admin', adminRoutes);
+    app.use('/api/user', userRoutes);
+    app.use('/api/delivery', deliveryRoutes);
+    app.use('/api/sapling-orders', saplingOrderRoutes);
 
-// Call immediately
-registerRoutes();
+    console.log('✅ Routes loaded');
+} catch (error) {
+    console.error('❌ Failed to load routes:', error.message);
+}
 
 // DB
 const MONGO_URI = process.env.MONGODB_URI;
