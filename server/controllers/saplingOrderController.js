@@ -2,10 +2,40 @@ import SaplingOrder from '../models/SaplingOrder.js';
 import Sapling from '../models/Sapling.js';
 import User from '../models/User.js';
 import Upload from '../models/Upload.js';
-import { v4 as uuidv4 } from 'uuid';
+import FormData from 'form-data';
+import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
+
+// Pinata Config
+const PINATA_API_KEY = process.env.PINATA_API_KEY;
+const PINATA_SECRET_KEY = process.env.PINATA_SECRET_KEY;
+
+// Helper to upload file to Pinata
+const uploadToPinata = async (filePath) => {
+    try {
+        const url = `https://api.pinata.cloud/pinning/pinFileToIPFS`;
+        let data = new FormData();
+        data.append('file', fs.createReadStream(filePath));
+
+        const response = await axios.post(url, data, {
+            maxBodyLength: 'infinity',
+            headers: {
+                'Content-Type': `multipart/form-data; boundary=${data._boundary}`,
+                'pinata_api_key': PINATA_API_KEY,
+                'pinata_secret_api_key': PINATA_SECRET_KEY
+            }
+        });
+
+        return `https://gateway.pinata.cloud/ipfs/${response.data.IpfsHash}`;
+    } catch (error) {
+        console.error('Error uploading to Pinata:', error);
+        throw error;
+    }
+};
 
 // Helper to create the initial Upload record so it shows in stats
-const createInitialUploadRecord = async (userId, saplingId, photoPath, location) => {
+const createInitialUploadRecord = async (userId, saplingId, photoUrl, location) => {
     try {
         console.log(`📸 Creating Initial Upload Record for ${saplingId}...`);
 
@@ -19,18 +49,15 @@ const createInitialUploadRecord = async (userId, saplingId, photoPath, location)
         await Upload.create({
             user_id: userId,
             sapling_id: saplingId,
-            image_ipfs_hash: photoPath, // Storing local path here if IPFS not used yet
-            local_path: photoPath,
-            ipfs_uploaded: false,
+            image_ipfs_hash: photoUrl,
+            local_path: photoUrl, // Use URL for both fields for compatibility
+            ipfs_uploaded: true,
             plant_status: 'Initial',
             growth_indicators: 'Sapling received',
             location: location || {},
             verified: true, // Initial photos from admin/shop are trusted
             carbon_calculated: 0,
-            eco_coins_awarded: 0, // Coins usually awarded via Order/Redemption logic, not here to avoid double dip? Or maybe 20? 
-            // User logic says "Initial sapling photo captured... +20 EcoCoins". 
-            // Let's assume the Order flow might handle rewards separately or we trigger it here.
-            // For now, setting 0 to be safe unless specified.
+            eco_coins_awarded: 0,
             is_initial_photo: true,
             upload_date: new Date()
         });
@@ -46,11 +73,20 @@ export const createSaplingOrder = async (req, res) => {
 
         // Handle file upload if present
         let initialPhoto = req.body.initialPhoto;
+
         if (req.file) {
-            initialPhoto = `/uploads/saplings/${req.file.filename}`;
-            console.log(`📸 Initial photo received via file upload: ${initialPhoto}`);
-        } else {
-            // If manual string provided (rare usually for dev testing or existing logic)
+            console.log('📤 Uploading image to Pinata...');
+            try {
+                // Upload the file from temp storage to Pinata
+                initialPhoto = await uploadToPinata(req.file.path);
+                console.log(`✅ Image uploaded to Pinata: ${initialPhoto}`);
+
+                // Clean up temp file
+                fs.unlinkSync(req.file.path);
+            } catch (err) {
+                console.error('Failed to upload to Pinata, falling back to temp path (will disappear):', err);
+                initialPhoto = `/uploads/saplings/${req.file.filename}`; // Fallback (broken in prod but better than crash)
+            }
         }
 
         // Find the sapling template (available sapling)
@@ -116,7 +152,14 @@ export const adminUploadSaplingPhoto = async (req, res) => {
             return res.status(400).json({ message: 'Photo is required' });
         }
 
-        const initialPhoto = `/uploads/saplings/${req.file.filename}`;
+        let initialPhoto;
+        try {
+            initialPhoto = await uploadToPinata(req.file.path);
+            fs.unlinkSync(req.file.path); // Clean up
+        } catch (err) {
+            console.error('Pinata Upload Failed:', err);
+            initialPhoto = `/uploads/saplings/${req.file.filename}`;
+        }
 
         const order = await SaplingOrder.findOne({ order_id: orderId });
         if (!order) return res.status(404).json({ message: 'Order not found' });
