@@ -13,3 +13,9 @@ export const BASE_URL = window.location.hostname === 'localhost' || window.locat
     : PROD_URL;
 
 export const API_URL = `${BASE_URL}/api`;
+
+console.log('🌐 Greenmark API Configuration:', {
+    API_URL,
+    hostname: window.location.hostname,
+    isLocal: window.location.hostname === 'localhost'
+});
