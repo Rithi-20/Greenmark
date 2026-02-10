@@ -27,39 +27,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 console.log('✅ Server initializing...');
-console.log('✅ DB Config:', !!process.env.MONGODB_URI);
 
-// Import routes dynamically to avoid top-level import issues
-let authRoutes, adminRoutes, userRoutes, deliveryRoutes, saplingOrderRoutes;
-
-const initializeRoutes = async () => {
-    try {
-        const authModule = await import('./routes/auth.js');
-        const adminModule = await import('./routes/admin.js');
-        const userModule = await import('./routes/user.js');
-        const deliveryModule = await import('./routes/delivery.js');
-        const saplingModule = await import('./routes/saplingOrder.js');
-
-        authRoutes = authModule.default;
-        adminRoutes = adminModule.default;
-        userRoutes = userModule.default;
-        deliveryRoutes = deliveryModule.default;
-        saplingOrderRoutes = saplingModule.default;
-
-        // Register routes
-        app.use('/api/auth', authRoutes);
-        app.use('/api/admin', adminRoutes);
-        app.use('/api/user', userRoutes);
-        app.use('/api/delivery', deliveryRoutes);
-        app.use('/api/sapling-orders', saplingOrderRoutes);
-
-        console.log('✅ Routes loaded successfully');
-    } catch (error) {
-        console.error('❌ Route loading error:', error.message);
-    }
-};
-
-// Health check (available immediately)
+// Health check (always available)
 app.get('/api/ping', (req, res) => {
     res.json({ status: 'ok', time: new Date().toISOString() });
 });
@@ -68,18 +37,35 @@ app.get('/', (req, res) => {
     res.send('GreenMark API is running');
 });
 
-// DB Connection
+// Load routes immediately with dynamic imports
+(async () => {
+    try {
+        const authModule = await import('./routes/auth.js');
+        const adminModule = await import('./routes/admin.js');
+        const userModule = await import('./routes/user.js');
+        const deliveryModule = await import('./routes/delivery.js');
+        const saplingModule = await import('./routes/saplingOrder.js');
+
+        app.use('/api/auth', authModule.default);
+        app.use('/api/admin', adminModule.default);
+        app.use('/api/user', userModule.default);
+        app.use('/api/delivery', deliveryModule.default);
+        app.use('/api/sapling-orders', saplingModule.default);
+
+        console.log('✅ Routes loaded successfully');
+    } catch (error) {
+        console.error('❌ Route loading error:', error);
+    }
+})();
+
+// DB Connection (runs in parallel, doesn't block routes)
 const MONGO_URI = process.env.MONGODB_URI;
 if (MONGO_URI) {
     mongoose.connect(MONGO_URI)
-        .then(() => {
-            console.log('✅ MongoDB Connected');
-            initializeRoutes();
-        })
+        .then(() => console.log('✅ MongoDB Connected'))
         .catch(err => console.error('❌ MongoDB Error:', err.message));
 } else {
-    console.error('❌ MONGODB_URI not found!');
-    initializeRoutes(); // Still load routes even without DB for testing
+    console.error('❌ MONGODB_URI not found in environment!');
 }
 
 export default app;
