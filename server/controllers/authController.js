@@ -85,10 +85,11 @@ export const loginUser = async (req, res) => {
     const { email, password } = req.body;
     try {
         console.log(`🔑 User Login Attempt: Input=${email}`);
+        const cleanedEmail = email?.trim();
         const user = await User.findOne({
             $or: [
-                { email: email },
-                { mobile: email }
+                { email: cleanedEmail },
+                { mobile: cleanedEmail }
             ]
         });
 

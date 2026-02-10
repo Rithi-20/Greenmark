@@ -95,7 +95,7 @@ const UploadUpdate = () => {
             }
             // Wrong species detected
             else if (errorData?.verdict === 'WRONG_SPECIES') {
-                setError(`❌ Wrong Sapling Detected! Please upload a photo of your ${saplingInfo?.plant_name || 'registered sapling'}.`);
+                setError(`❌ Wrong Sapling Detected! Please upload a photo of your ${selectedSapling?.plant_name || 'registered sapling'}.`);
                 setVerificationResult({
                     authenticity: { score: 0, verdict: 'WRONG_SPECIES' },
                     plantRecognition: { confidence: errorData.plantConfidence || 0, verdict: 'WRONG_SPECIES' },

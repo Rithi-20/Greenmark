@@ -163,7 +163,17 @@ const SaplingStats = () => {
                                     <div key={log._id} className="group rounded-xl bg-gray-50 overflow-hidden border border-gray-100 hover:border-green-200 transition-all shadow-sm">
                                         <div className="aspect-[4/3] overflow-hidden">
                                             <img
-                                                src={log.ipfs_gateway_url || (log.image_ipfs_hash?.startsWith('http') ? log.image_ipfs_hash : (log.image_ipfs_hash ? `${BASE_URL}${log.image_ipfs_hash}` : 'https://images.unsplash.com/photo-1592150621344-82d67abb9dfa?w=400'))}
+                                                src={(() => {
+                                                    if (log.ipfs_gateway_url) return log.ipfs_gateway_url;
+                                                    if (log.image_ipfs_hash?.startsWith('http')) return log.image_ipfs_hash;
+                                                    if (log.image_ipfs_hash?.startsWith('Qm') || log.image_ipfs_hash?.length > 40) {
+                                                        return `https://gateway.pinata.cloud/ipfs/${log.image_ipfs_hash}`;
+                                                    }
+                                                    if (log.image_ipfs_hash?.startsWith('/uploads')) {
+                                                        return `${BASE_URL}${log.image_ipfs_hash}`;
+                                                    }
+                                                    return log.image_ipfs_hash ? `${BASE_URL}${log.image_ipfs_hash.startsWith('/') ? '' : '/'}${log.image_ipfs_hash}` : 'https://images.unsplash.com/photo-1592150621344-82d67abb9dfa?w=400';
+                                                })()}
                                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                                 alt="Growth Update"
                                                 onError={(e) => {
