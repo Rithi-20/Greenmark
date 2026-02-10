@@ -16,23 +16,25 @@
     "routes": [
         {
             "src": "/api/(.*)",
+            "dest": "/server/server.js",
             "headers": {
                 "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization"
-            },
-            "dest": "server/server.js"
+                "Access-Control-Allow-Methods": "GET,OPTIONS,PATCH,DELETE,POST,PUT",
+                "Access-Control-Allow-Headers": "*"
+            }
         },
         {
             "src": "/uploads/(.*)",
-            "headers": {
-                "Access-Control-Allow-Origin": "*"
-            },
-            "dest": "server/server.js"
+            "dest": "/server/server.js"
         },
         {
             "src": "/(.*)",
-            "dest": "client/$1"
+            "dest": "/client/$1",
+            "continue": true
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/client/index.html"
         }
     ]
 }
