@@ -8,9 +8,11 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-if (process.env.NODE_ENV !== 'production') {
-    dotenv.config({ path: path.join(process.cwd(), 'server', '.env') });
-}
+// Load environment variables immediately
+dotenv.config();
+// Fallback path in case process.cwd is different in deployment
+dotenv.config({ path: path.join(process.cwd(), '.env') });
+dotenv.config({ path: path.join(process.cwd(), 'server', '.env') });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
