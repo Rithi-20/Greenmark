@@ -77,7 +77,11 @@ export const uploadToIPFS = async (filePath, metadata = {}) => {
         const response = await axios.post(
             `${PINATA_BASE_URL}/pinning/pinFileToIPFS`,
             formData,
-            { headers, maxBodyLength: Infinity }
+            {
+                headers,
+                maxBodyLength: Infinity,
+                timeout: 30000 // 30 second timeout
+            }
         );
 
         const ipfsHash = response.data.IpfsHash;

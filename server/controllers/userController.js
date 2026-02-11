@@ -115,6 +115,13 @@ export const registerSapling = async (req, res) => {
         user.reward_points = (user.reward_points || 0) + registrationBonus;
         await user.save();
 
+        // Sync with Reward collection
+        await Reward.findOneAndUpdate(
+            { user_id: user.user_id },
+            { $set: { total_points: user.reward_points } },
+            { upsert: true }
+        );
+
         // 3. Process Initial Photo (Compulsory for baseline) if present
         let uploadData = null;
         if (req.file) {
@@ -545,11 +552,17 @@ export const getSaplingStats = async (req, res) => {
         const sapling = await Sapling.findOne({ sapling_id: saplingId });
         if (!sapling) return res.status(404).json({ message: `Sapling ${saplingId} not found` });
 
-        const uploads = await Upload.find({ sapling_id: saplingId }).sort({ upload_date: -1 });
+        const uploads = await Upload.find({ sapling_id: saplingId }).sort({ upload_date: -1 }).lean();
+
+        // Enrich with URLs
+        const history = uploads.map(u => ({
+            ...u,
+            image_url: u.image_base64 || u.ipfs_gateway_url || u.local_path || u.image_ipfs_hash
+        }));
 
         res.json({
             sapling,
-            history: uploads
+            history
         });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
@@ -795,35 +808,50 @@ export const getUserOrders = async (req, res) => {
 };
 
 // Upload Initial Photo (At sapling handover)
+// Upload Initial Photo (At sapling handover) - Optimized
 export const uploadInitialPhoto = async (req, res) => {
     const { userId, saplingId, sapling_id, location } = req.body;
     const finalSaplingId = saplingId || sapling_id;
 
     try {
-        console.log('📸 Uploading initial sapling photo at handover...');
+        console.log(`📸 Processing initial sapling photo for User: ${userId}, Sapling: ${finalSaplingId}`);
 
-        // Validate User
-        const actor = await User.findOne({ user_id: userId }) || await Admin.findOne({ admin_id: userId });
+        // 1. Parallel Validation
+        const [actor, sapling] = await Promise.all([
+            User.findOne({ user_id: userId }) || Admin.findOne({ admin_id: userId }),
+            Sapling.findOne({ sapling_id: finalSaplingId })
+        ]);
+
         if (!actor) return res.status(404).json({ message: `User not found: ${userId}` });
-
-        // Validate Sapling
-        const sapling = await Sapling.findOne({ sapling_id: finalSaplingId });
         if (!sapling) return res.status(404).json({ message: `Sapling not found: ${finalSaplingId}` });
 
-        // Validate File
+        // 2. Validate File
         if (!req.file) return res.status(400).json({ message: "Image file is required" });
-
         const localFilePath = path.join(process.cwd(), 'uploads', req.file.filename);
         const relativePath = `/uploads/${req.file.filename}`;
 
-        // Run authenticity check
-        const authenticityResult = await analyzePhotoAuthenticity(localFilePath);
+        // Read Base64 immediately for DB storage
+        const imageBuffer = fs.readFileSync(localFilePath);
+        const imageBase64 = `data:${req.file.mimetype};base64,${imageBuffer.toString('base64')}`;
 
-        // Run plant recognition
-        const recognitionResult = await recognizeSapling(localFilePath, sapling.plant_name);
+        // ============================================
+        // PARALLEL EXECUTION: AUTHENTICITY, RECOGNITION, IPFS
+        // ============================================
+        console.log('⚡ Starting Parallel Verification & Upload...');
+
+        const ipfsPromise = isIPFSConfigured() ? uploadToIPFS(localFilePath, {
+            name: `initial_${finalSaplingId}_${Date.now()}`,
+            user_id: userId,
+            sapling_id: finalSaplingId,
+            upload_type: 'initial_photo'
+        }) : Promise.resolve({ success: false });
+
+        const [authenticityResult, recognitionResult] = await Promise.all([
+            analyzePhotoAuthenticity(localFilePath),
+            recognizeSapling(localFilePath, sapling.plant_name)
+        ]);
 
         if (!recognitionResult.isSapling) {
-            // Specific handling for Wrong Species (Initial Upload)
             if (recognitionResult.verdict === 'WRONG_SPECIES') {
                 fs.unlinkSync(localFilePath);
                 return res.status(400).json({
@@ -842,22 +870,20 @@ export const uploadInitialPhoto = async (req, res) => {
             }
         }
 
-        // Upload to IPFS if configured
+        // Wait for IPFS with a safety check
         let ipfsResult = { success: false };
-        if (isIPFSConfigured()) {
-            ipfsResult = await uploadToIPFS(localFilePath, {
-                name: `initial_${finalSaplingId}_${Date.now()}`,
-                user_id: userId,
-                sapling_id: finalSaplingId,
-                upload_type: 'initial_photo'
-            });
+        try {
+            ipfsResult = await ipfsPromise;
+        } catch (e) {
+            console.error("IPFS Upload Error:", e.message);
         }
 
-        // Create upload record
+        // 3. Create upload record
         const upload = await Upload.create({
             user_id: userId,
             sapling_id: finalSaplingId,
             image_ipfs_hash: ipfsResult.success ? ipfsResult.ipfsHash : relativePath,
+            image_base64: imageBase64, // OPTIMIZATION: Store Base64
             ipfs_gateway_url: ipfsResult.gatewayUrl || null,
             local_path: relativePath,
             ipfs_uploaded: ipfsResult.success,
@@ -883,19 +909,24 @@ export const uploadInitialPhoto = async (req, res) => {
         });
 
         // Award initial registration coins
-        if (actor.user_id) {
-            const user = await User.findOne({ user_id: userId });
-            if (user) {
-                user.reward_points = (user.reward_points || 0) + 20;
-                await user.save();
-            }
+        const user = await User.findOne({ user_id: userId });
+        if (user) {
+            user.reward_points = (user.reward_points || 0) + 20;
+            await user.save();
+
+            // Sync with Reward collection
+            await Reward.findOneAndUpdate(
+                { user_id: userId },
+                { $set: { total_points: user.reward_points } },
+                { upsert: true }
+            );
         }
 
         res.status(201).json({
             message: 'Initial sapling photo captured successfully! +20 EcoCoins awarded.',
             upload: {
                 _id: upload._id,
-                image_url: ipfsResult.gatewayUrl || `http://localhost:5000${relativePath}`,
+                image_url: imageBase64 || ipfsResult.gatewayUrl || relativePath,
                 ipfs_hash: ipfsResult.success ? ipfsResult.ipfsHash : null
             },
             credits: {
@@ -925,10 +956,10 @@ export const getUploadHistory = async (req, res) => {
             .sort({ upload_date: -1 })
             .lean();
 
-        // Enrich with IPFS gateway URLs
+        // Enrich with URLs
         const enrichedUploads = uploads.map(upload => ({
             ...upload,
-            image_url: upload.ipfs_gateway_url || `http://localhost:5000${upload.local_path || upload.image_ipfs_hash}`,
+            image_url: upload.image_base64 || upload.ipfs_gateway_url || upload.local_path || upload.image_ipfs_hash,
             verification_summary: {
                 authenticity: upload.authenticity?.verdict || 'UNKNOWN',
                 plantRecognition: upload.recognition?.verdict || 'UNKNOWN',
@@ -968,7 +999,7 @@ export const getVerificationDetails = async (req, res) => {
             upload: {
                 _id: upload._id,
                 upload_date: upload.upload_date,
-                image_url: upload.ipfs_gateway_url || `http://localhost:5000${upload.local_path || upload.image_ipfs_hash}`,
+                image_url: upload.image_base64 || upload.ipfs_gateway_url || upload.local_path || upload.image_ipfs_hash,
                 ipfs_hash: upload.ipfs_uploaded ? upload.image_ipfs_hash : null,
                 is_initial_photo: upload.is_initial_photo
             },
@@ -1002,7 +1033,7 @@ export const getVerificationDetails = async (req, res) => {
                     comparedWith: comparisonUpload ? {
                         _id: comparisonUpload._id,
                         date: comparisonUpload.upload_date,
-                        image_url: comparisonUpload.ipfs_gateway_url || `http://localhost:5000${comparisonUpload.local_path || comparisonUpload.image_ipfs_hash}`
+                        image_url: comparisonUpload.image_base64 || comparisonUpload.ipfs_gateway_url || comparisonUpload.local_path || comparisonUpload.image_ipfs_hash
                     } : null
                 }
             },

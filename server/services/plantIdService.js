@@ -38,7 +38,8 @@ export const detectPlantWithPlantId = async (buffer, expectedSpecies) => {
                 headers: {
                     'Content-Type': 'application/json',
                     'Api-Key': PLANT_ID_API_KEY
-                }
+                },
+                timeout: 30000 // 30 second timeout
             }
         );
 

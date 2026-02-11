@@ -65,9 +65,9 @@ export const calculateUploadCredits = async ({
         // ==========================================
         // 1. MINIMUM TIME CHECK (Physical limit)
         // ==========================================
-        // Plants cannot grow significantly in < 15 days.
+        // Plants need at least a few days to show growth.
         // Unless it's the very first upload ever.
-        if (!isFirstUpload && daysSinceLast < 15) {
+        if (!isFirstUpload && daysSinceLast < 5) {
             return {
                 success: true,
                 totalEcoCoins: 0,
@@ -96,7 +96,7 @@ export const calculateUploadCredits = async ({
             breakdown.firstUploadBonus = 20;
         } else {
             // Subsequent uploads MUST show growth OR maintenance over time
-            if (growthEstimate > 5) {
+            if (growthEstimate > 2) {
                 validGrowth = true;
                 breakdown.baseCoins = 10; // Valid maintenance
 
@@ -105,9 +105,9 @@ export const calculateUploadCredits = async ({
                 breakdown.growthBonus = Math.floor(growthEstimate * 0.5);
             } else {
                 // Too little growth to reward significant points
-                // Maybe just 2 coins for "checking in" if time passed is > 30 days
-                if (daysSinceLast > 25) {
-                    breakdown.baseCoins = 2; // Token amount for keeping data alive
+                // Maybe just 5 coins for "checking in" if time passed is > 10 days
+                if (daysSinceLast > 10) {
+                    breakdown.baseCoins = 5; // Token amount for keeping data alive
                 } else {
                     return {
                         success: true,
