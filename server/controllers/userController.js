@@ -4,6 +4,7 @@ import Upload from '../models/Upload.js';
 import UserSapling from '../models/UserSapling.js';
 import Reward from '../models/Reward.js';
 import Notification from '../models/Notification.js';
+import SaplingOrder from '../models/SaplingOrder.js';
 import mongoose from 'mongoose';
 import Redemption from '../models/Redemption.js';
 import Admin from '../models/Admin.js';
@@ -379,24 +380,27 @@ export const uploadImage = async (req, res) => {
         }
 
         // ============================================
-        // AWAIT IPFS RESULT (Optimized: we waited for checks first)
+        // STEP: START IPFS RECORD (Don't await, do it in background)
         // ============================================
         let ipfsData = { success: false, hash: null, url: null };
-        try {
-            const uploadRes = await ipfsPromise;
-            if (uploadRes.success) {
-                ipfsData = {
-                    success: true,
-                    hash: uploadRes.ipfsHash,
-                    url: uploadRes.gatewayUrl
-                };
-                console.log(`   ✅ IPFS Uploaded: ${uploadRes.ipfsHash}`);
-            } else {
-                console.warn('   ⚠️ IPFS Upload Failed (using local fallback)');
+
+        // We will start the upload but NOT wait for it to finish before responding to user
+        // This makes the UI feel much faster.
+        const handleBackgroundUpload = async (uploadId) => {
+            try {
+                const uploadRes = await ipfsPromise;
+                if (uploadRes.success) {
+                    await Upload.findByIdAndUpdate(uploadId, {
+                        image_ipfs_hash: uploadRes.ipfsHash,
+                        ipfs_gateway_url: uploadRes.gatewayUrl,
+                        ipfs_uploaded: true
+                    });
+                    console.log(`   ✅ IPFS Background Upload Complete: ${uploadRes.ipfsHash}`);
+                }
+            } catch (err) {
+                console.error('   ⚠️ IPFS Background Upload Failed:', err);
             }
-        } catch (ipfsErr) {
-            console.error('   ⚠️ IPFS Error:', ipfsErr);
-        }
+        };
 
         // ============================================
         // STEP 6: CALCULATE & AWARD CREDITS
@@ -420,17 +424,17 @@ export const uploadImage = async (req, res) => {
         const newUpload = await Upload.create({
             user_id: userId,
             sapling_id: finalSaplingId,
-            image_ipfs_hash: ipfsData.hash || relativePath,
-            image_base64: imageBase64, // OPTIMIZATION: Store Base64
-            ipfs_gateway_url: ipfsData.url,
+            image_ipfs_hash: relativePath, // Use local path initially
+            image_base64: imageBase64,
+            ipfs_gateway_url: null,
             local_path: relativePath,
-            ipfs_uploaded: ipfsData.success,
+            ipfs_uploaded: false,
 
             plant_status: plant_status || 'Healthy',
             growth_indicators: growth_indicators || heuristicMessage,
             location: location ? (typeof location === 'string' ? JSON.parse(location) : location) : { latitude: 0, longitude: 0 },
 
-            verified: true, // AUTO-VERIFIED because it passed all checks
+            verified: true,
 
             authenticity: { score: authResult.authenticityScore, isAuthentic: true },
             recognition: { confidence: recognitionResult.plantConfidence },
@@ -445,6 +449,9 @@ export const uploadImage = async (req, res) => {
             creditBreakdown: tokenResult.breakdown,
             is_initial_photo: !!is_initial_photo
         });
+
+        // Trigger IPFS sync in background
+        handleBackgroundUpload(newUpload._id);
 
         // Update User Balance
         if (actor) {
@@ -559,8 +566,31 @@ export const getSaplingStats = async (req, res) => {
             return res.status(404).json({ message: `Sapling ${saplingId} not found` });
         }
 
-        const uploads = await Upload.find({ sapling_id: saplingId }).sort({ upload_date: -1 }).lean();
+        let uploads = await Upload.find({ sapling_id: saplingId }).sort({ upload_date: -1 }).lean();
         console.log(`📸 Found ${uploads.length} upload records for ${saplingId}`);
+
+        // --- SELF-HEALING: If no uploads found but it's assigned, try to backfill from SaplingOrder ---
+        if (uploads.length === 0) {
+            console.log(`🛠️ Self-Healing: No uploads for ${saplingId}, checking SaplingOrder...`);
+            const order = await SaplingOrder.findOne({ sapling_id: saplingId, status: 'delivered' });
+            if (order && order.initial_photo) {
+                console.log(`📝 Found delivered order for ${saplingId}. Creating initial upload record...`);
+                // Create the record manually and re-fetch
+                await Upload.create({
+                    user_id: order.user_id,
+                    sapling_id: saplingId,
+                    image_ipfs_hash: order.initial_photo,
+                    image_base64: order.initial_photo_base64,
+                    local_path: order.initial_photo,
+                    plant_status: 'Initial',
+                    growth_indicators: 'Sapling received',
+                    verified: true,
+                    is_initial_photo: true,
+                    upload_date: order.delivery_date || order.createdAt
+                });
+                uploads = await Upload.find({ sapling_id: saplingId }).sort({ upload_date: -1 }).lean();
+            }
+        }
 
         // Enrich with URLs
         const history = uploads.map(u => ({
@@ -573,6 +603,7 @@ export const getSaplingStats = async (req, res) => {
             history
         });
     } catch (error) {
+        console.error('❌ Sapling Stats Error:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };

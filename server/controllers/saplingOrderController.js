@@ -266,19 +266,23 @@ export const updateSaplingOrderStatus = async (req, res) => {
                     sapling.status = 'active';
                     await sapling.save();
                     console.log('✅ Sapling assigned to user successfully');
-
-                    // --- NEW: Generate Initial Upload Record ---
-                    if (order.initial_photo) {
-                        await createInitialUploadRecord(
-                            order.user_id,
-                            order.sapling_id,
-                            order.initial_photo,
-                            order.location,
-                            order.initial_photo_base64
-                        );
-                    }
                 } else {
-                    console.error('❌ User not found while delivering sapling');
+                    console.warn(`⚠️ User record not found for user_id: ${order.user_id}, but continuing assignment...`);
+                    sapling.is_assigned = true;
+                    sapling.status = 'active';
+                    await sapling.save();
+                }
+
+                // --- NEW: Generate Initial Upload Record ---
+                // We run this even if userObj isn't perfectly matched in the lookup above
+                if (order.initial_photo) {
+                    await createInitialUploadRecord(
+                        order.user_id,
+                        order.sapling_id,
+                        order.initial_photo,
+                        order.location,
+                        order.initial_photo_base64
+                    );
                 }
             }
             order.delivery_date = new Date();
