@@ -8,7 +8,7 @@ import mongoose from 'mongoose';
 import Redemption from '../models/Redemption.js';
 import Admin from '../models/Admin.js';
 import Certificate from '../models/Certificate.js';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 import fs from 'fs';
 import path from 'path';
 
@@ -212,7 +212,7 @@ export const getMySaplings = async (req, res) => {
     }
 };
 
-// Upload Image with IPFS and Verification (Enhanced Module)
+// Upload Image with IPFS and Verification (Optimized & Parallelized)
 export const uploadImage = async (req, res) => {
     const { userId, saplingId, sapling_id, plant_status, growth_indicators, location, is_initial_photo } = req.body;
     const finalSaplingId = saplingId || sapling_id;
@@ -221,10 +221,12 @@ export const uploadImage = async (req, res) => {
         console.log(`📸 Processing upload for User: ${userId}, Sapling: ${finalSaplingId}`);
 
         // 1. Validate User & Sapling
-        const actor = await User.findOne({ user_id: userId }) || await Admin.findOne({ admin_id: userId });
-        if (!actor) return res.status(404).json({ message: `User not found: ${userId}` });
+        const [actor, sapling] = await Promise.all([
+            User.findOne({ user_id: userId }) || Admin.findOne({ admin_id: userId }),
+            Sapling.findOne({ sapling_id: finalSaplingId })
+        ]);
 
-        const sapling = await Sapling.findOne({ sapling_id: finalSaplingId });
+        if (!actor) return res.status(404).json({ message: `User not found: ${userId}` });
         if (!sapling) return res.status(404).json({ message: `Sapling not found: ${finalSaplingId}` });
 
         // 2. Validate File
@@ -232,16 +234,24 @@ export const uploadImage = async (req, res) => {
         const localFilePath = path.join(process.cwd(), 'uploads', req.file.filename);
         const relativePath = `/uploads/${req.file.filename}`;
 
+        // Read Base64 immediately (Sync read is fast enough for <5MB, keeps it simple)
+        // Store as Data URI format for direct frontend usage
+        const imageBuffer = fs.readFileSync(localFilePath);
+        const imageBase64 = `data:${req.file.mimetype};base64,${imageBuffer.toString('base64')}`;
+
         // ============================================
         // STEP 0: MONTHLY LIMIT CHECK (Strict: Verified Only)
         // ============================================
+        let previousUploads = [];
         if (!is_initial_photo) {
             // Find the last VERIFIED upload for this specific sapling
-            const lastVerifiedUpload = await Upload.findOne({
+            previousUploads = await Upload.find({
                 sapling_id: finalSaplingId,
-                verified: true,
-                is_initial_photo: { $ne: true } // Don't count the initial baseline as a monthly update
+                verified: true
             }).sort({ upload_date: -1 });
+
+            // Filter out initial photo for monthly limit check
+            const lastVerifiedUpload = previousUploads.find(u => !u.is_initial_photo);
 
             if (lastVerifiedUpload) {
                 const daysSinceLast = (Date.now() - new Date(lastVerifiedUpload.upload_date).getTime()) / (1000 * 60 * 60 * 24);
@@ -258,32 +268,45 @@ export const uploadImage = async (req, res) => {
         }
 
         // ============================================
-        // STEP 1: AUTHENTICITY CHECK
+        // PARALLEL EXECUTION: AUTHENTICITY, RECOGNITION, FRAUD, IPFS
         // ============================================
-        console.log('🔍 1. Authenticity Check...');
-        const authResult = await analyzePhotoAuthenticity(localFilePath);
+        console.log('⚡ Starting Parallel Verification & Upload...');
 
+        // Start IPFS Upload in background (don't await yet)
+        const ipfsPromise = isIPFSConfigured() ? uploadToIPFS(localFilePath, {
+            name: `sapling_${finalSaplingId}_${Date.now()}`,
+            sapling_id: finalSaplingId,
+            user_id: userId
+        }) : Promise.resolve({ success: false });
+
+        // Run Verification Checks in Parallel
+        const [authResult, recognitionResult, fraudResult] = await Promise.all([
+            analyzePhotoAuthenticity(localFilePath),
+            recognizeSapling(localFilePath, sapling.plant_name),
+            verifyGrowthUpdate(localFilePath, previousUploads)
+        ]);
+
+        // ============================================
+        // CHECK RESULTS
+        // ============================================
+
+        // 1. Authenticity Failed?
         if (!authResult.isAuthentic) {
             fs.unlinkSync(localFilePath);
             return res.status(400).json({
-                message: '❌ Photo Check Failed: Not an original camera photo.',
+                message: authResult.verdict === 'REJECTED_EVENING_PHOTO'
+                    ? '🌙 Evening Photo Rejected'
+                    : '❌ Photo Check Failed: Not an original camera photo.',
                 details: authResult.recommendation,
                 issues: authResult.issues,
                 authenticityScore: authResult.authenticityScore,
-                suggestion: 'Please take a NEW photo directly with your camera app.'
+                suggestion: 'Please take a NEW photo directly with your camera app in daylight.'
             });
         }
-        console.log(`   ✅ Authentic (Score: ${authResult.authenticityScore})`);
 
-        // ============================================
-        // STEP 2: SAPLING RECOGNITION (Plant.id)
-        // ============================================
-        console.log('🌱 2. Plant Recognition...');
-        const recognitionResult = await recognizeSapling(localFilePath, sapling.plant_name);
-
+        // 2. Recognition Failed?
         if (!recognitionResult.isSapling) {
             fs.unlinkSync(localFilePath);
-            // Specific handling for Wrong Species
             if (recognitionResult.verdict === 'WRONG_SPECIES') {
                 return res.status(400).json({
                     message: recognitionResult.message || 'Wrong plant species detected.',
@@ -292,8 +315,6 @@ export const uploadImage = async (req, res) => {
                     plantConfidence: recognitionResult.plantConfidence
                 });
             }
-
-            // General non-plant rejection
             if (recognitionResult.plantConfidence < 40) {
                 return res.status(400).json({
                     message: '❌ Photo Rejected: Does not look like a plant/sapling.',
@@ -303,21 +324,8 @@ export const uploadImage = async (req, res) => {
                 });
             }
         }
-        console.log(`   ✅ Valid Plant (Confidence: ${recognitionResult.plantConfidence}%)`);
 
-        // ============================================
-        // STEP 3: FRAUD/DUPLICATE & SAME SAPLING CHECK
-        // ============================================
-        console.log('🔒 3. Fraud & Consistency Detection...');
-
-        // Fetch previous VERIFIED uploads to compare against valid history
-        const previousUploads = await Upload.find({
-            sapling_id: finalSaplingId,
-            verified: true
-        }).sort({ upload_date: -1 });
-
-        const fraudResult = await verifyGrowthUpdate(localFilePath, previousUploads);
-
+        // 3. Fraud Detected?
         if (fraudResult.verdict === 'FRAUD_DETECTED') {
             fs.unlinkSync(localFilePath);
             return res.status(400).json({
@@ -327,7 +335,9 @@ export const uploadImage = async (req, res) => {
             });
         }
 
-        // "Same Sapling" Identity Check - Compare with the most recent verified photo
+        // ============================================
+        // GROWTH COMPARISON & SAME SAPLING CHECK
+        // ============================================
         let heuristicMessage = "Growth verified.";
         let growthEstimate = 0;
         let comparedWithDate = null;
@@ -335,7 +345,6 @@ export const uploadImage = async (req, res) => {
 
         if (previousUploads.length > 0) {
             const comparisonBase = previousUploads[0]; // Most recent verified
-
             // Resolve path (prefer local, fallback to trying to find it)
             let baseParams = null;
             if (comparisonBase.local_path && fs.existsSync(path.join(process.cwd(), comparisonBase.local_path))) {
@@ -343,49 +352,23 @@ export const uploadImage = async (req, res) => {
             }
 
             if (baseParams) {
-                console.log(`   Comparing with last verified photo from: ${new Date(comparisonBase.upload_date).toDateString()}`);
                 const growthCheck = await estimateGrowth(localFilePath, baseParams);
-
                 growthEstimate = growthCheck.growthEstimate;
                 comparisonScore = growthCheck.comparisonScore;
                 comparedWithDate = comparisonBase.upload_date;
 
-                // CRITICAL: Check if it's the SAME plant (Similarity > Threshold)
-                // If similarity is < 20%, it's likely a completely different subject or plant
-                // A growing plant should maintain some structural similarity (30-80%)
                 if (comparisonScore < 20) {
-                    // Flag as potentially different plant
-                    console.warn(`   ⚠️ LOW SIMILARITY (${comparisonScore}%). Might be a different plant.`);
-                    // Strict mode: Reject
-                    // fs.unlinkSync(localFilePath);
-                    // return res.status(400).json({
-                    //    message: '❌ Verification Failed: Different Plant Detected',
-                    //    details: 'This photo looks completely different from your previous sapling photos.',
-                    //    similarity: comparisonScore
-                    // });
-                    // Permissive mode for MVP: Just warn/log, maybe reduce score
                     heuristicMessage = "⚠️ Warning: Plant looks significantly different.";
-                } else {
-                    console.log(`   ✅ Visual match confirmed (Similarity: ${comparisonScore}%)`);
                 }
             }
         }
 
         // ============================================
-        // STEP 5: IPFS UPLOAD
+        // AWAIT IPFS RESULT (Optimized: we waited for checks first)
         // ============================================
         let ipfsData = { success: false, hash: null, url: null };
-
-        if (!isIPFSConfigured()) {
-            console.log('   📝 IPFS Not fully configured (missing keys/JWT). Skipping IPFS upload.');
-        } else {
-            console.log('☁️ 5. Uploading to IPFS...');
-            const uploadRes = await uploadToIPFS(localFilePath, {
-                name: `sapling_${finalSaplingId}_${Date.now()}`,
-                sapling_id: finalSaplingId,
-                user_id: userId
-            });
-
+        try {
+            const uploadRes = await ipfsPromise;
             if (uploadRes.success) {
                 ipfsData = {
                     success: true,
@@ -396,6 +379,8 @@ export const uploadImage = async (req, res) => {
             } else {
                 console.warn('   ⚠️ IPFS Upload Failed (using local fallback)');
             }
+        } catch (ipfsErr) {
+            console.error('   ⚠️ IPFS Error:', ipfsErr);
         }
 
         // ============================================
@@ -421,6 +406,7 @@ export const uploadImage = async (req, res) => {
             user_id: userId,
             sapling_id: finalSaplingId,
             image_ipfs_hash: ipfsData.hash || relativePath,
+            image_base64: imageBase64, // OPTIMIZATION: Store Base64
             ipfs_gateway_url: ipfsData.url,
             local_path: relativePath,
             ipfs_uploaded: ipfsData.success,

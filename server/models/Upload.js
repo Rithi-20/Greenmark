@@ -4,6 +4,7 @@ const uploadSchema = new mongoose.Schema({
     user_id: { type: String, required: true },
     sapling_id: { type: String, required: true },
     image_ipfs_hash: { type: String, required: true },
+    image_base64: { type: String }, // Store Base64 for faster retrieval
 
     // IPFS Data
     ipfs_gateway_url: { type: String },

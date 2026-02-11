@@ -4,7 +4,7 @@ const userSchema = new mongoose.Schema({
     user_id: { type: String, required: true, unique: true }, // e.g., "USR001"
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
-    mobile: { type: String },
+    mobile: { type: String, unique: true, sparse: true }, // Sparse allows multiple nulls if not required
     password: { type: String, required: true },
     registered_date: { type: Date, default: Date.now },
     total_carbon: { type: Number, default: 0 },
