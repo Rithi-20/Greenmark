@@ -8,7 +8,7 @@ import mongoose from 'mongoose';
 import Redemption from '../models/Redemption.js';
 import Admin from '../models/Admin.js';
 import Certificate from '../models/Certificate.js';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import fs from 'fs';
 import path from 'path';
 
