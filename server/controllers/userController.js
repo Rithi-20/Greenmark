@@ -265,15 +265,15 @@ export const uploadImage = async (req, res) => {
             // Filter out initial photo for monthly limit check
             const lastVerifiedUpload = previousUploads.find(u => !u.is_initial_photo);
 
+            // Limit: 1 day (Relaxed for testing and frequent updates)
             if (lastVerifiedUpload) {
                 const daysSinceLast = (Date.now() - new Date(lastVerifiedUpload.upload_date).getTime()) / (1000 * 60 * 60 * 24);
-                // Limit: 25 days (approx a month with buffer)
-                if (daysSinceLast < 25) {
+                if (daysSinceLast < 1) {
                     fs.unlinkSync(localFilePath); // Cleanup uploaded file
                     return res.status(400).json({
-                        message: `⏳ Monthly Limit Reached`,
-                        details: `You already have a verified growth update from ${Math.round(daysSinceLast)} days ago.`,
-                        nextUploadDate: new Date(new Date(lastVerifiedUpload.upload_date).getTime() + 25 * 24 * 60 * 60 * 1000).toDateString()
+                        message: `⏳ Daily Limit Reached`,
+                        details: `You already have a verified growth update from today.`,
+                        nextUploadDate: new Date(new Date(lastVerifiedUpload.upload_date).getTime() + 24 * 60 * 60 * 1000).toDateString()
                     });
                 }
             }
@@ -304,16 +304,19 @@ export const uploadImage = async (req, res) => {
 
         // 1. Authenticity Failed?
         if (!authResult.isAuthentic) {
-            fs.unlinkSync(localFilePath);
-            return res.status(400).json({
-                message: authResult.verdict === 'REJECTED_EVENING_PHOTO'
-                    ? '🌙 Evening Photo Rejected'
-                    : '❌ Photo Check Failed: Not an original camera photo.',
-                details: authResult.recommendation,
-                issues: authResult.issues,
-                authenticityScore: authResult.authenticityScore,
-                suggestion: 'Please take a NEW photo directly with your camera app in daylight.'
-            });
+            // RELAX: Allow evening photos for now but warn
+            if (authResult.verdict === 'REJECTED_EVENING_PHOTO') {
+                console.log('🌙 Evening photo detected, but allowing for now per user request.');
+            } else {
+                fs.unlinkSync(localFilePath);
+                return res.status(400).json({
+                    message: '❌ Photo Check Failed: Not an original camera photo.',
+                    details: authResult.recommendation,
+                    issues: authResult.issues,
+                    authenticityScore: authResult.authenticityScore,
+                    suggestion: 'Please take a NEW photo directly with your camera app in daylight.'
+                });
+            }
         }
 
         // 2. Recognition Failed?
@@ -549,10 +552,15 @@ export const getSaplingStats = async (req, res) => {
     saplingId = saplingId.trim();
 
     try {
+        console.log(`📊 Fetching stats for sapling: ${saplingId}`);
         const sapling = await Sapling.findOne({ sapling_id: saplingId });
-        if (!sapling) return res.status(404).json({ message: `Sapling ${saplingId} not found` });
+        if (!sapling) {
+            console.error(`❌ Sapling ${saplingId} not found in DB`);
+            return res.status(404).json({ message: `Sapling ${saplingId} not found` });
+        }
 
         const uploads = await Upload.find({ sapling_id: saplingId }).sort({ upload_date: -1 }).lean();
+        console.log(`📸 Found ${uploads.length} upload records for ${saplingId}`);
 
         // Enrich with URLs
         const history = uploads.map(u => ({

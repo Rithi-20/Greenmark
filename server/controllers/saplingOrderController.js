@@ -22,17 +22,18 @@ const uploadToPinata = async (filePath) => {
     }
 };
 
-// Helper to create the initial Upload record so it shows in stats
 const createInitialUploadRecord = async (userId, saplingId, photoUrl, location, base64) => {
     try {
-        console.log(`📸 Creating Initial Upload Record for ${saplingId}...`);
+        console.log(`📸 [createInitialUploadRecord] Starting for Sapling: ${saplingId}, User: ${userId}`);
 
         // Check if already exists to prevent duplicates
         const existing = await Upload.findOne({ sapling_id: saplingId, is_initial_photo: true });
         if (existing) {
-            console.log('⚠️ Initial upload already exists, skipping.');
+            console.log(`⚠️ Initial upload for ${saplingId} already exists (ID: ${existing._id}), skipping.`);
             return;
         }
+
+        console.log(`🚀 Creating new Initial Upload record for ${saplingId}...`);
 
         await Upload.create({
             user_id: userId,

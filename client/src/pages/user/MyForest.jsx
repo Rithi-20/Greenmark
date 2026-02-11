@@ -70,42 +70,6 @@ const MyForest = () => {
                     </div>
                 ) : (
                     <>
-                        {/* Mobile Access Setup */}
-                        <div className="mb-8 p-6 bg-blue-50 border border-blue-100 rounded-2xl">
-                            <div className="flex flex-col md:flex-row md:items-center gap-6">
-                                <div className="flex-1">
-                                    <h3 className="text-blue-900 font-bold flex items-center gap-2">
-                                        <AlertCircle className="w-5 h-5 text-blue-600" />
-                                        Setup for Mobile Scanning
-                                    </h3>
-                                    <p className="text-sm text-blue-700 mt-1">
-                                        If you see "localhost" in the scanned link, your phone cannot connect.
-                                        Please enter your computer's <strong>Network IP Address</strong> below (e.g., 192.168.1.5).
-                                    </p>
-                                </div>
-                                <div className="w-full md:w-64">
-                                    <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">
-                                        Computer IP Address
-                                    </label>
-                                    <div className="flex bg-white rounded-xl border border-blue-200 overflow-hidden shadow-sm focus-within:ring-2 focus-within:ring-blue-400">
-                                        <div className="bg-blue-50 px-3 py-2 border-r border-blue-100 flex items-center">
-                                            <span className="text-xs font-bold text-blue-500">http://</span>
-                                        </div>
-                                        <input
-                                            type="text"
-                                            placeholder="192.168.x.x"
-                                            className="flex-1 px-3 py-2 text-sm font-bold text-gray-700 outline-none"
-                                            value={ipAddress}
-                                            onChange={(e) => setIpAddress(e.target.value)}
-                                        />
-                                        <div className="bg-blue-50 px-3 py-2 border-l border-blue-100 flex items-center">
-                                            <span className="text-xs font-bold text-blue-500">:5173</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {saplings.map((sap) => (
                                 <div key={sap._id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
@@ -118,7 +82,7 @@ const MyForest = () => {
                                                 <QRCode
                                                     size={256}
                                                     style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-                                                    value={`${window.location.protocol}//${ipAddress}${window.location.port ? ':' + window.location.port : ''}/user/upload/${sap.sapling_id}`}
+                                                    value={`${window.location.origin}/user/upload/${sap.sapling_id}`}
                                                     viewBox={`0 0 256 256`}
                                                 />
                                             </div>

@@ -170,8 +170,22 @@ const SaplingOrderManager = () => {
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
-                                        <div className="relative aspect-video rounded-xl overflow-hidden border border-gray-100">
-                                            <img src={`${BASE_URL}${order.initial_photo}`} alt="Sapling" className="w-full h-full object-cover" />
+                                        <div className="relative aspect-video rounded-xl overflow-hidden border border-gray-100 bg-gray-50 flex items-center justify-center">
+                                            <img
+                                                src={order.initial_photo?.startsWith('data:image') || order.initial_photo?.startsWith('http')
+                                                    ? order.initial_photo
+                                                    : `${BASE_URL}${order.initial_photo?.startsWith('/') ? '' : '/uploads/'}${order.initial_photo}`}
+                                                alt="Sapling"
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => {
+                                                    // Magic Fallback for Vercel
+                                                    if (!e.target.src.includes('unsplash')) {
+                                                        const filename = order.initial_photo?.split('/').pop();
+                                                        if (filename && !filename.startsWith('http')) e.target.src = `${BASE_URL}/uploads/${filename}`;
+                                                        else e.target.src = 'https://images.unsplash.com/photo-1592150621344-82d67abb9dfa?w=400';
+                                                    }
+                                                }}
+                                            />
 
                                             <div className="absolute top-2 left-2 px-2 py-1 bg-green-600 text-white text-[7px] font-black rounded uppercase tracking-widest">
                                                 Baseline Verified

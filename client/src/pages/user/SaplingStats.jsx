@@ -164,6 +164,8 @@ const SaplingStats = () => {
                                         <div className="aspect-[4/3] overflow-hidden">
                                             <img
                                                 src={(() => {
+                                                    if (log.image_base64) return log.image_base64;
+                                                    if (log.image_url) return log.image_url;
                                                     if (log.ipfs_gateway_url) return log.ipfs_gateway_url;
                                                     if (log.image_ipfs_hash?.startsWith('http')) return log.image_ipfs_hash;
                                                     if (log.image_ipfs_hash?.startsWith('Qm') || log.image_ipfs_hash?.length > 40) {
@@ -177,7 +179,13 @@ const SaplingStats = () => {
                                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                                 alt="Growth Update"
                                                 onError={(e) => {
+                                                    // Magic Fallback for Vercel
                                                     if (!e.target.src.includes('unsplash')) {
+                                                        const filename = log.local_path?.split('/').pop() || log.image_ipfs_hash?.split('/').pop();
+                                                        if (filename && !filename.startsWith('http')) {
+                                                            e.target.src = `${BASE_URL}/uploads/${filename}`;
+                                                            return;
+                                                        }
                                                         e.target.src = 'https://images.unsplash.com/photo-1592150621344-82d67abb9dfa?w=400';
                                                     }
                                                 }}
