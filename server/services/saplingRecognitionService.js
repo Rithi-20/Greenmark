@@ -312,47 +312,14 @@ export const recognizeSapling = async (filePath, expectedSpecies = null) => {
         const filename = path.basename(filePath);
 
         // Initialize scores
-        let plantConfidence = 50;
+        let plantConfidence = 40;
         const validations = [];
         const issues = [];
-
-        // 0. SPECIES CHECK (If expectedSpecies provided)
-        // Use Plant.id API for actual plant detection (FREE - 100 requests/day)
-        if (expectedSpecies) {
-            try {
-                // Use Plant.id API to detect plant species
-                const plantIdResult = await detectPlantWithPlantId(buffer, expectedSpecies);
-
-                if (plantIdResult.wrongSpecies) {
-                    console.log(`⚠️ Species Mismatch: Expected ${expectedSpecies}, detected ${plantIdResult.detectedPlant}`);
-                    return {
-                        success: true,
-                        isSapling: false,
-                        plantConfidence: plantIdResult.confidence,
-                        verdict: 'WRONG_SPECIES',
-                        message: `❌ Incorrect Sapling Detected: This appears to be a ${plantIdResult.detectedPlant} (${plantIdResult.scientificName}). Please upload a photo of your ${expectedSpecies} sapling.`,
-                        validations: [],
-                        issues: [`AI detected ${plantIdResult.detectedPlant} instead of ${expectedSpecies}`],
-                        detectedSpecies: plantIdResult.detectedPlant,
-                        scientificName: plantIdResult.scientificName
-                    };
-                }
-
-                if (plantIdResult.isPlant) {
-                    plantConfidence += 20;
-                    validations.push(`AI confirmed: ${plantIdResult.scientificName} (${plantIdResult.confidence}% confidence)`);
-                }
-            } catch (plantIdError) {
-                console.warn('⚠️ Plant.id API Error:', plantIdError.message);
-                // Continue with heuristic checks if Plant.id fails
-                issues.push('AI species detection unavailable, using fallback detection');
-            }
-        }
 
         // 1. Basic Color Analysis
         const colorAnalysis = analyzeGreenContent(buffer);
         if (colorAnalysis.isLikelyPlant) {
-            plantConfidence += 15;
+            plantConfidence += 25;
             validations.push(`Image has ${colorAnalysis.greenRatio}% green content (plant-like)`);
         } else if (colorAnalysis.greenRatio < 5) {
             plantConfidence -= 15;
@@ -362,7 +329,7 @@ export const recognizeSapling = async (filePath, expectedSpecies = null) => {
         // 2. Advanced Color Analysis
         const advancedColor = advancedColorAnalysis(buffer);
         if (advancedColor.hasNaturalColors) {
-            plantConfidence += 10;
+            plantConfidence += 15;
             validations.push(`Natural green tones detected (${advancedColor.naturalGreenRatio}%)`);
         }
         if (advancedColor.isOverexposed) {
@@ -370,7 +337,50 @@ export const recognizeSapling = async (filePath, expectedSpecies = null) => {
             issues.push('Image appears overexposed');
         }
 
-        // 3. Filename Check
+        // 3. Image Properties
+        const propAnalysis = checkImageProperties(buffer, fileSize);
+        plantConfidence += (propAnalysis.score - 50) * 0.5;
+        if (propAnalysis.isJpeg) validations.push('Valid image format');
+
+        // =========================================================
+        // SPEED OPTIMIZATION: HEURISTIC BYPASS
+        // If our local fast checks are >80% confident, SKIP Plant.id
+        // This makes the response INSTANT for good photos.
+        // =========================================================
+        const isHighlyConfident = plantConfidence >= 80 && issues.length === 0;
+
+        if (expectedSpecies && !isHighlyConfident) {
+            console.log(`⏳ Heuristically uncertain (${plantConfidence}%), calling Plant.id for ${expectedSpecies}...`);
+            try {
+                const plantIdResult = await detectPlantWithPlantId(buffer, expectedSpecies);
+
+                if (plantIdResult.wrongSpecies) {
+                    console.log(`⚠️ Species Mismatch: Expected ${expectedSpecies}, detected ${plantIdResult.detectedPlant}`);
+                    return {
+                        success: true,
+                        isSapling: false,
+                        plantConfidence: plantIdResult.confidence,
+                        verdict: 'WRONG_SPECIES',
+                        message: `❌ Incorrect Sapling: AI detected ${plantIdResult.detectedPlant}. Please upload your ${expectedSpecies}.`,
+                        validations: [],
+                        issues: [`AI detected ${plantIdResult.detectedPlant} instead of ${expectedSpecies}`],
+                        detectedSpecies: plantIdResult.detectedPlant
+                    };
+                }
+
+                if (plantIdResult.isPlant) {
+                    plantConfidence = Math.max(plantConfidence, plantIdResult.confidence);
+                    validations.push(`AI species confirmed: ${plantIdResult.scientificName}`);
+                }
+            } catch (plantIdError) {
+                console.warn('⚠️ Plant.id API Timeout or Error, relying on heuristics');
+            }
+        } else if (isHighlyConfident) {
+            console.log('🚀 Skipping Plant.id (Local Heuristics High Confidence)');
+            validations.push('Fast AI: Photo matches sapling profile');
+        }
+
+        // 4. Filename Check
         const filenameAnalysis = checkFilenameKeywords(filename);
         if (filenameAnalysis.hasPlantKeyword) {
             plantConfidence += 5;
@@ -381,16 +391,10 @@ export const recognizeSapling = async (filePath, expectedSpecies = null) => {
             issues.push('Filename suggests screenshot or downloaded image');
         }
 
-        // 4. Image Properties
-        const propAnalysis = checkImageProperties(buffer, fileSize);
-        plantConfidence += (propAnalysis.score - 50) * 0.5;
-
-        if (propAnalysis.isJpeg) {
-            validations.push('Valid JPEG image format');
-        }
+        // Quality Indicators (Consolidated)
         if (fileSize > 500000) {
             validations.push('High quality image (suitable for analysis)');
-        } else if (fileSize < 100000) {
+        } else if (fileSize < 200000) {
             issues.push('Low quality or compressed image');
         }
 

@@ -247,10 +247,21 @@ export const uploadImage = async (req, res) => {
         const localFilePath = path.join(process.cwd(), 'uploads', req.file.filename);
         const relativePath = `/uploads/${req.file.filename}`;
 
-        // Read Base64 immediately (Sync read is fast enough for <5MB, keeps it simple)
-        // Store as Data URI format for direct frontend usage
-        const imageBuffer = fs.readFileSync(localFilePath);
-        const imageBase64 = `data:${req.file.mimetype};base64,${imageBuffer.toString('base64')}`;
+        // ============================================
+        // SPEED OPTIMIZATION: Resize image immediately
+        // This makes AI checks and DB storage MUCH faster.
+        // ============================================
+        const originalBuffer = fs.readFileSync(localFilePath);
+        const resizedBuffer = await sharp(originalBuffer)
+            .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 80 })
+            .toBuffer();
+
+        // Use Resized Buffer for storage (Saves DB space, speeds up loading)
+        const imageBase64 = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
+
+        // Save the optimized version back to disk (optional, but good for local fallback)
+        fs.writeFileSync(localFilePath, resizedBuffer);
 
         // ============================================
         // STEP 0: MONTHLY LIMIT CHECK (Strict: Verified Only)
