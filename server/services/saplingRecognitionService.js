@@ -64,7 +64,7 @@ const analyzeGreenContent = (buffer) => {
 
     return {
         greenRatio: Math.round(greenRatio),
-        isLikelyPlant: greenRatio > 15 // If more than 15% samples are green
+        isLikelyPlant: greenRatio > 10 // Relaxed from 15% for flash/night photos
     };
 };
 
@@ -141,8 +141,8 @@ const advancedColorAnalysis = (buffer) => {
         const g = buffer[i + 1];
         const b = buffer[i + 2];
 
-        // Natural green hues (not neon or artificial)
-        if (g > r && g > b && g >= 40 && g <= 200) {
+        // Natural green hues (Relaxed max for flash photos)
+        if (g > r && g > b && g >= 30 && g <= 250) {
             if (Math.abs(r - b) < 50) { // Natural greens have similar R and B
                 naturalGreenCount++;
             }
@@ -161,8 +161,8 @@ const advancedColorAnalysis = (buffer) => {
 
     return {
         naturalGreenRatio: Math.round(naturalGreenRatio),
-        hasNaturalColors: naturalGreenRatio > 10,
-        isOverexposed: brightRatio > 40,
+        hasNaturalColors: naturalGreenRatio > 8,
+        isOverexposed: brightRatio > 60, // Relaxed from 40 for flash photos
         score: Math.round(naturalGreenRatio * 2)
     };
 };

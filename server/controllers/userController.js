@@ -316,19 +316,14 @@ export const uploadImage = async (req, res) => {
 
         // 1. Authenticity Failed?
         if (!authResult.isAuthentic) {
-            // RELAX: Allow evening photos for now but warn
-            if (authResult.verdict === 'REJECTED_EVENING_PHOTO') {
-                console.log('🌙 Evening photo detected, but allowing for now per user request.');
-            } else {
-                fs.unlinkSync(localFilePath);
-                return res.status(400).json({
-                    message: '❌ Photo Check Failed: Not an original camera photo.',
-                    details: authResult.recommendation,
-                    issues: authResult.issues,
-                    authenticityScore: authResult.authenticityScore,
-                    suggestion: 'Please take a NEW photo directly with your camera app in daylight.'
-                });
-            }
+            fs.unlinkSync(localFilePath);
+            return res.status(400).json({
+                message: '❌ Photo Check Failed: Not an original camera photo.',
+                details: authResult.recommendation,
+                issues: authResult.issues,
+                authenticityScore: authResult.authenticityScore,
+                suggestion: 'Please take a NEW photo directly with your camera app.'
+            });
         }
 
         // 2. Recognition Failed?

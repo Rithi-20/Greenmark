@@ -88,15 +88,8 @@ export const analyzePhotoAuthenticity = async (filePath) => {
 
             // EVENING TIME CHECK (6:00 PM to 6:00 AM)
             if (hour >= 18 || hour < 6) {
-                // Strict Reject for evening photos
-                return {
-                    isAuthentic: false,
-                    authenticityScore: 10,
-                    verdict: 'REJECTED_EVENING_PHOTO',
-                    recommendation: 'Photo rejected: Taken during evening/night time. Please take photos in daylight (6 AM - 6 PM).',
-                    issues: [`Photo taken at ${new Date(photoDate).toLocaleTimeString()} (Evening/Night). Good lighting is required.`],
-                    validations: []
-                };
+                issues.push(`🌙 Photo taken at ${new Date(photoDate).toLocaleTimeString()} (Evening/Night). Lighting may be poor.`);
+                score -= 10; // Small penalty instead of reject
             }
 
             if (ageInMinutes < 0) {
