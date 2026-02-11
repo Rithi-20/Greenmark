@@ -161,8 +161,8 @@ const advancedColorAnalysis = (buffer) => {
 
     return {
         naturalGreenRatio: Math.round(naturalGreenRatio),
-        hasNaturalColors: naturalGreenRatio > 8,
-        isOverexposed: brightRatio > 60, // Relaxed from 40 for flash photos
+        hasNaturalColors: naturalGreenRatio > 5, // Even lower for night/flash
+        isOverexposed: brightRatio > 80, // Very high for flash support
         score: Math.round(naturalGreenRatio * 2)
     };
 };
@@ -312,9 +312,17 @@ export const recognizeSapling = async (filePath, expectedSpecies = null) => {
         const filename = path.basename(filePath);
 
         // Initialize scores
-        let plantConfidence = 40;
+        let plantConfidence = 45; // Slightly higher base
         const validations = [];
         const issues = [];
+
+        // Night Mode Detection (Bonus)
+        const hour = new Date().getHours();
+        const isNight = hour >= 18 || hour < 6;
+        if (isNight) {
+            console.log('🌙 Night mode detection active (being more lenient)');
+            plantConfidence += 5;
+        }
 
         // 1. Basic Color Analysis
         const colorAnalysis = analyzeGreenContent(buffer);
@@ -414,10 +422,10 @@ export const recognizeSapling = async (filePath, expectedSpecies = null) => {
             verdict = 'LIKELY_SAPLING';
             isSapling = true;
             message = 'Image likely contains a plant. Will be flagged for verification.';
-        } else if (plantConfidence >= 30) {
-            verdict = 'UNCERTAIN';
-            isSapling = false;
-            message = 'Cannot confidently identify a plant in this image.';
+        } else if (plantConfidence >= 25) { // Relaxed from 30
+            verdict = 'UNCERTAIN_BUT_ALLOWED';
+            isSapling = true; // ALLOW Uncertain photos, especially at night
+            message = 'Image is a bit unclear, but we will accept it for this update.';
         } else {
             verdict = 'NOT_SAPLING';
             isSapling = false;

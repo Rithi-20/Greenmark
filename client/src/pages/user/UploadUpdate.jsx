@@ -113,7 +113,13 @@ const UploadUpdate = () => {
             }
             // Generic errors
             else {
-                setError(`Upload Failed. Please try again with a clear photo of your sapling.`);
+                setError(errorData?.message || `Upload Failed. Please try again with a clear photo of your sapling.`);
+                if (errorData?.details) {
+                    setVerificationResult({
+                        message: errorData.details,
+                        verdict: errorData.verdict || 'REJECTED'
+                    });
+                }
             }
         } finally {
             setLoading(false);
