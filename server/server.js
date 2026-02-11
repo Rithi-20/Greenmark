@@ -58,7 +58,7 @@ async function connectDB() {
 
         console.log('🔄 Initializing new MongoDB connection...');
         cached.promise = mongoose.connect(MONGO_URI, opts).then((mongoose) => {
-            console.log('✅ MongoDB Connected Successfully');
+            console.log('✅ MongoDB Connected Successfully'); // Should only print once on cold start
             return mongoose;
         });
     }
@@ -77,7 +77,7 @@ async function connectDB() {
 // Middleware: Ensure DB is connected before handling requests
 app.use(async (req, res, next) => {
     // Skip DB connect for simple health check or static files or OPTIONS
-    if (req.path === '/api/ping' || req.method === 'OPTIONS' || req.path === '/favicon.ico') {
+    if (req.path === '/api/ping' || req.method === 'OPTIONS' || req.path === '/favicon.ico' || req.path.startsWith('/uploads/')) {
         return next();
     }
 
