@@ -35,7 +35,8 @@ export const getDashboardStats = async (req, res) => {
             userName: userMap[u.user_id] || 'Unknown User',
             saplingId: u.sapling_id,
             carbon: u.carbon_calculated,
-            date: u.upload_date
+            date: u.upload_date,
+            imageUrl: u.image_base64 || u.ipfs_gateway_url || u.local_path || u.image_ipfs_hash
         }));
 
         // Top Contributors (Users with highest reward points/carbon)
@@ -168,6 +169,7 @@ export const getPendingVerifications = async (req, res) => {
 
         const enrichedUploads = uploads.map(u => ({
             ...u,
+            image_url: u.image_base64 || u.ipfs_gateway_url || u.local_path || u.image_ipfs_hash,
             userName: userMap[u.user_id]?.name || 'Unknown User',
             userEmail: userMap[u.user_id]?.email || 'N/A'
         }));
@@ -391,8 +393,13 @@ export const getUserHistory = async (req, res) => {
         }
 
         const finalUserId = user.user_id; // Use the actual ID from DB
-        const uploads = await Upload.find({ user_id: finalUserId }).sort({ upload_date: -1 }).lean();
+        const uploadsRec = await Upload.find({ user_id: finalUserId }).sort({ upload_date: -1 }).lean();
         const redemptions = await Redemption.find({ user_id: finalUserId }).sort({ request_date: -1 }).lean();
+
+        const uploads = uploadsRec.map(u => ({
+            ...u,
+            image_url: u.image_base64 || u.ipfs_gateway_url || u.local_path || u.image_ipfs_hash
+        }));
 
         res.json({
             user,
@@ -628,10 +635,15 @@ export const markRedeemed = async (req, res) => {
 // Get Verified Uploads (History)
 export const getVerifiedUploads = async (req, res) => {
     try {
-        const uploads = await Upload.find({ verified: true })
+        const uploadsRec = await Upload.find({ verified: true })
             .sort({ upload_date: -1 })
             .limit(50)
             .lean(); // Limit to last 50 verified uploads
+
+        const uploads = uploadsRec.map(u => ({
+            ...u,
+            image_url: u.image_base64 || u.ipfs_gateway_url || u.local_path || u.image_ipfs_hash
+        }));
 
         res.json(uploads);
     } catch (error) {

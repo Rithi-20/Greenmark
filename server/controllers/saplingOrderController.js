@@ -2,40 +2,28 @@ import SaplingOrder from '../models/SaplingOrder.js';
 import Sapling from '../models/Sapling.js';
 import User from '../models/User.js';
 import Upload from '../models/Upload.js';
-import FormData from 'form-data';
-import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
+import { uploadToIPFS, isIPFSConfigured } from '../services/ipfsService.js';
 
 // Pinata Config
 const PINATA_API_KEY = process.env.PINATA_API_KEY;
 const PINATA_SECRET_KEY = process.env.PINATA_SECRET_KEY;
 
-// Helper to upload file to Pinata
+// Helper to upload file to IPFS
 const uploadToPinata = async (filePath) => {
     try {
-        const url = `https://api.pinata.cloud/pinning/pinFileToIPFS`;
-        let data = new FormData();
-        data.append('file', fs.createReadStream(filePath));
-
-        const response = await axios.post(url, data, {
-            maxBodyLength: 'infinity',
-            headers: {
-                'Content-Type': `multipart/form-data; boundary=${data._boundary}`,
-                'pinata_api_key': PINATA_API_KEY,
-                'pinata_secret_api_key': PINATA_SECRET_KEY
-            }
-        });
-
-        return `https://gateway.pinata.cloud/ipfs/${response.data.IpfsHash}`;
+        const result = await uploadToIPFS(filePath, { upload_type: 'sapling_order' });
+        if (result.success) return result.gatewayUrl;
+        return null;
     } catch (error) {
-        console.error('Error uploading to Pinata:', error);
-        throw error;
+        console.error('Error uploading to IPFS:', error);
+        return null; // Fallback handled by caller
     }
 };
 
 // Helper to create the initial Upload record so it shows in stats
-const createInitialUploadRecord = async (userId, saplingId, photoUrl, location) => {
+const createInitialUploadRecord = async (userId, saplingId, photoUrl, location, base64) => {
     try {
         console.log(`📸 Creating Initial Upload Record for ${saplingId}...`);
 
@@ -50,8 +38,9 @@ const createInitialUploadRecord = async (userId, saplingId, photoUrl, location) 
             user_id: userId,
             sapling_id: saplingId,
             image_ipfs_hash: photoUrl,
+            image_base64: base64, // Store Base64 for faster retrieval on Vercel
             local_path: photoUrl, // Use URL for both fields for compatibility
-            ipfs_uploaded: true,
+            ipfs_uploaded: photoUrl?.startsWith('http'),
             plant_status: 'Initial',
             growth_indicators: 'Sapling received',
             location: location || {},
@@ -73,19 +62,29 @@ export const createSaplingOrder = async (req, res) => {
 
         // Handle file upload if present
         let initialPhoto = req.body.initialPhoto;
+        let initialPhotoBase64 = null;
 
         if (req.file) {
-            console.log('📤 Uploading image to Pinata...');
+            console.log('📤 Processing initial photo...');
+
+            // Read Base64 immediately for persistence
+            try {
+                const buffer = fs.readFileSync(req.file.path);
+                initialPhotoBase64 = `data:${req.file.mimetype};base64,${buffer.toString('base64')}`;
+            } catch (err) {
+                console.error('Failed to generate base64:', err);
+            }
+
             try {
                 // Upload the file from temp storage to Pinata
                 initialPhoto = await uploadToPinata(req.file.path);
                 console.log(`✅ Image uploaded to Pinata: ${initialPhoto}`);
 
                 // Clean up temp file
-                fs.unlinkSync(req.file.path);
+                if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
             } catch (err) {
-                console.error('Failed to upload to Pinata, falling back to temp path (will disappear):', err);
-                initialPhoto = `/uploads/saplings/${req.file.filename}`; // Fallback (broken in prod but better than crash)
+                console.error('Failed to upload to Pinata, falling back to local filename:', err);
+                initialPhoto = req.file.filename;
             }
         }
 
@@ -113,6 +112,7 @@ export const createSaplingOrder = async (req, res) => {
             delivery_address: deliveryMethod === 'online_delivery' ? JSON.parse(address) : null,
             location: location ? JSON.parse(location) : null,
             initial_photo: initialPhoto || null,
+            initial_photo_base64: initialPhotoBase64,
             status: initialStatus,
             otp: Math.floor(1000 + Math.random() * 9000).toString()
         });
@@ -127,7 +127,7 @@ export const createSaplingOrder = async (req, res) => {
             await sapling.save();
 
             if (initialPhoto) {
-                await createInitialUploadRecord(userId, saplingId, initialPhoto, location ? JSON.parse(location) : null);
+                await createInitialUploadRecord(userId, saplingId, initialPhoto, location ? JSON.parse(location) : null, initialPhotoBase64);
             }
         }
 
@@ -153,23 +153,29 @@ export const adminUploadSaplingPhoto = async (req, res) => {
         }
 
         let initialPhoto;
+        let initialPhotoBase64 = null;
         try {
+            // Read Base64 immediately
+            const buffer = fs.readFileSync(req.file.path);
+            initialPhotoBase64 = `data:${req.file.mimetype};base64,${buffer.toString('base64')}`;
+
             initialPhoto = await uploadToPinata(req.file.path);
-            fs.unlinkSync(req.file.path); // Clean up
+            if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); // Clean up
         } catch (err) {
-            console.error('Pinata Upload Failed:', err);
-            initialPhoto = `/uploads/saplings/${req.file.filename}`;
+            console.error('Photo Process or Pinata Upload Failed:', err);
+            initialPhoto = req.file.filename;
         }
 
         const order = await SaplingOrder.findOne({ order_id: orderId });
         if (!order) return res.status(404).json({ message: 'Order not found' });
 
         order.initial_photo = initialPhoto;
+        order.initial_photo_base64 = initialPhotoBase64;
 
         // If it was already delivered (legacy bug), try to fix upload
         if (order.status === 'delivered') {
             console.log('⚠️ Order was already delivered but missing photo. Backfilling...');
-            await createInitialUploadRecord(order.user_id, order.sapling_id, initialPhoto, order.location);
+            await createInitialUploadRecord(order.user_id, order.sapling_id, initialPhoto, order.location, initialPhotoBase64);
         } else {
             order.status = 'ready_for_pickup';
         }
@@ -213,7 +219,14 @@ export const getSaplingOrders = async (req, res) => {
         }
 
         console.log(`🔍 [${role}] Fetching Sapling Orders Query:`, JSON.stringify(query));
-        const orders = await SaplingOrder.find(query).sort({ order_date: -1 });
+        const ordersRec = await SaplingOrder.find(query).sort({ order_date: -1 }).lean();
+
+        // Enrich with proper image URL (prioritize base64)
+        const orders = ordersRec.map(o => ({
+            ...o,
+            initial_photo: o.initial_photo_base64 || o.initial_photo
+        }));
+
         console.log(`✅ Found ${orders.length} orders`);
         res.json(orders);
     } catch (error) {
@@ -225,7 +238,9 @@ export const getSaplingOrders = async (req, res) => {
 export const updateSaplingOrderStatus = async (req, res) => {
     try {
         const { orderId } = req.params;
-        const { status, deliveryPartnerId, otp } = req.body;
+        let { status, deliveryPartnerId, otp } = req.body;
+
+        if (status) status = status.toLowerCase(); // Standardize to match model enum
 
         console.log(`📝 Updating Sapling Order ${orderId} to status: ${status}`);
 
@@ -257,7 +272,8 @@ export const updateSaplingOrderStatus = async (req, res) => {
                             order.user_id,
                             order.sapling_id,
                             order.initial_photo,
-                            order.location
+                            order.location,
+                            order.initial_photo_base64
                         );
                     }
                 } else {

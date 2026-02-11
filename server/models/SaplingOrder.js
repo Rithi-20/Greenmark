@@ -28,6 +28,7 @@ const saplingOrderSchema = new mongoose.Schema({
 
     // Initial Photo (Baseline)
     initial_photo: { type: String }, // URL or Path
+    initial_photo_base64: { type: String }, // Store Base64 for faster retrieval on Vercel
     is_initial_photo_verified: { type: Boolean, default: false },
 
     status: {

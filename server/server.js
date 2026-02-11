@@ -22,14 +22,76 @@ const app = express();
 // CORS
 app.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept']
 }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-// Legacy local upload support (new uploads go to Pinata)
+// Legacy local upload support (new uploads go to Pinata/Base64)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// --- MAGIC IMAGE FALLBACK FOR VERCEL ---
+// If a local file is missing, try to serve it from the DB base64
+app.get('/uploads/:filename', async (req, res, next) => {
+    const { filename } = req.params;
+    const localPath = path.join(__dirname, 'uploads', filename);
+
+    // If file exists locally, express.static would have handled it. 
+    // But if we're here, it's either not there or skipped.
+    if (fs.existsSync(localPath)) return next();
+
+    try {
+        // 1. Check Uploads collection
+        let record = await mongoose.model('Upload').findOne({
+            $or: [
+                { local_path: new RegExp(filename + '$') },
+                { image_ipfs_hash: filename }
+            ]
+        });
+
+        // 2. Check SaplingOrders if not found
+        if (!record) {
+            record = await mongoose.model('SaplingOrder').findOne({
+                $or: [
+                    { initial_photo: new RegExp(filename + '$') },
+                    { initial_photo_base64: { $exists: true, $ne: null } } // This is tricky, maybe search by ID if possible
+                ]
+            });
+
+            if (record && record.initial_photo_base64) {
+                const base64Data = record.initial_photo_base64.split(',')[1];
+                const img = Buffer.from(base64Data, 'base64');
+                res.writeHead(200, {
+                    'Content-Type': 'image/jpeg',
+                    'Content-Length': img.length
+                });
+                return res.end(img);
+            }
+        }
+
+        if (record && record.image_base64) {
+            // Serve from base64
+            const base64Data = record.image_base64.split(',')[1];
+            const img = Buffer.from(base64Data, 'base64');
+            res.writeHead(200, {
+                'Content-Type': 'image/jpeg', // Fallback to jpeg, usually fine
+                'Content-Length': img.length
+            });
+            return res.end(img);
+        }
+
+        // 3. Last chance: Redirect to IPFS if we have a hash/url
+        if (record && record.ipfs_gateway_url) {
+            return res.redirect(record.ipfs_gateway_url);
+        }
+
+        next(); // Not found, continue to regular 404
+    } catch (err) {
+        console.error('Fallback Image Error:', err);
+        next();
+    }
+});
 
 // --- DATABASE CONNECTION OPTIMIZATION (Serverless) ---
 const MONGO_URI = process.env.MONGODB_URI;
