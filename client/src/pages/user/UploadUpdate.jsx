@@ -323,7 +323,7 @@ const UploadUpdate = () => {
                                     <p className="font-semibold mb-1">AI Photo Verification</p>
                                     <ul className="list-disc list-inside space-y-1 text-blue-700">
                                         <li>Take a <strong>fresh photo</strong> from your camera (not downloads)</li>
-                                        <li>Ensure good lighting and clear view of the plant</li>
+                                        <li>Ensure a clear view of the plant</li>
                                         <li>AI will detect fraudulent or reused photos</li>
                                         <li>Original photos earn more EcoCoins!</li>
                                     </ul>
@@ -381,7 +381,7 @@ const UploadUpdate = () => {
                                         <div>
                                             <p className="font-semibold text-red-700">{error}</p>
                                             <p className="text-sm text-red-600 mt-2">
-                                                Please take a new photo directly from your camera with good lighting.
+                                                Please take a new photo directly from your camera for better verification.
                                             </p>
                                         </div>
                                     </div>

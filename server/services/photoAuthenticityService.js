@@ -32,19 +32,13 @@ export const analyzePhotoAuthenticity = async (filePath) => {
         // =========================================================
         const exifData = analyzeExifData(buffer);
 
-        if (!exifData.hasExif) {
-            return {
-                isAuthentic: false,
-                authenticityScore: 0,
-                verdict: 'REJECTED_NO_EXIF',
-                recommendation: 'Photo rejected: No camera metadata found. Please upload an original photo taken directly with your camera.',
-                issues: ['Missing EXIF metadata (typical of downloaded/screenshot images)'],
-                validations: []
-            };
+        if (exifData.hasExif) {
+            validations.push('EXIF Metadata found (Camera Signature)');
+            score += 35; // Increased bonus
+        } else {
+            issues.push('Missing camera metadata (EXIF). Using visual matching only.');
+            score += 15; // Small base score for valid file-types
         }
-
-        validations.push('EXIF Metadata found (Camera Signature)');
-        score += 30;
 
         // =========================================================
         // 2. CAMERA MAKER CHECK
